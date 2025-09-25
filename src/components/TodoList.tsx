@@ -19,12 +19,13 @@ const PAGE_SIZE = 10;
 export default function TodoList() {
   const queryClient = useQueryClient();
 
+  // Fetch todos
   const {
     data: todos = [],
     isLoading,
     isError,
     error,
-  } = useQuery<Todo[]>({
+  } = useQuery<Todo[], Error>({
     queryKey: ["todos"],
     queryFn: fetchTodos,
   });
@@ -38,17 +39,36 @@ export default function TodoList() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  const totalPages = Math.ceil(todos.length / PAGE_SIZE);
+  // -------------------------------
+  // Filter and paginate todos
+  // -------------------------------
+  const filteredTodos = useMemo(() => {
+    return todos
+      .filter((t) => t.title.toLowerCase().includes(search.toLowerCase()))
+      .filter((t) => {
+        if (statusFilter === "completed") return t.completed;
+        if (statusFilter === "incomplete") return !t.completed;
+        return true;
+      });
+  }, [todos, search, statusFilter]);
+
+  const totalPages = Math.ceil(filteredTodos.length / PAGE_SIZE);
+
+  const currentItems = useMemo(
+    () => filteredTodos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTodos, page]
+  );
+
+  // Reset to page 1 when filters change
+  useMemo(() => {
+    setPage(1);
+  }, [search, statusFilter]);
 
   // -------------------------------
   // Helper: Update todos in query
   // -------------------------------
-  const updateTodos = (callback: (t: Todo) => Todo | null) => {
-    queryClient.setQueryData<Todo[]>(
-      ["todos"],
-      (old: Todo[] | undefined) =>
-        (old ?? []).map(callback).filter(Boolean) as Todo[]
-    );
+  const updateTodos = (callback: (todos: Todo[]) => Todo[]) => {
+    queryClient.setQueryData<Todo[]>(["todos"], (old = []) => callback(old));
   };
 
   // -------------------------------
@@ -59,49 +79,61 @@ export default function TodoList() {
 
     const newItem: Todo = {
       id: Date.now(),
-      title: newTodo,
+      title: newTodo.trim(),
       completed: false,
     };
 
-    queryClient.setQueryData<Todo[]>(["todos"], (old: Todo[] | undefined) => [
-      newItem,
-      ...(old ?? []),
-    ]);
-
+    updateTodos((old) => [newItem, ...old]);
     setNewTodo("");
+  };
+
+  // -------------------------------
+  // Toggle todo completion
+  // -------------------------------
+  const handleToggle = (id: number) => {
+    updateTodos((old) =>
+      old.map((t: Todo) =>
+        t.id === id ? { ...t, completed: !t.completed } : t
+      )
+    );
   };
 
   // -------------------------------
   // Delete todo
   // -------------------------------
   const handleDelete = (id: number) => {
-    queryClient.setQueryData<Todo[]>(["todos"], (old: Todo[] | undefined) =>
-      (old ?? []).filter((t: Todo) => t.id !== id)
-    );
+    updateTodos((old) => old.filter((t) => t.id !== id));
   };
 
   // -------------------------------
-  // Filter todos
+  // Edit todo
   // -------------------------------
-  const filteredTodos = todos
-    .filter((t: Todo) => t.title.toLowerCase().includes(search.toLowerCase()))
-    .filter((t: Todo) => {
-      if (statusFilter === "completed") return t.completed;
-      if (statusFilter === "incomplete") return !t.completed;
-      return true;
-    });
+  const handleEdit = (id: number, newTitle: string) => {
+    if (!newTitle.trim()) return;
 
-  const currentItems = useMemo(
-    () => filteredTodos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredTodos, page]
-  );
+    updateTodos((old) =>
+      old.map((t) => (t.id === id ? { ...t, title: newTitle.trim() } : t))
+    );
+    setEditingId(null);
+    setEditValue("");
+  };
+
+  const startEdit = (todo: Todo) => {
+    setEditingId(todo.id);
+    setEditValue(todo.title);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValue("");
+  };
 
   // -------------------------------
   // Render
   // -------------------------------
-  if (isLoading && todos.length === 0) return <p>Loading…</p>;
+  if (isLoading && todos.length === 0) return <p className="p-4">Loading…</p>;
   if (isError)
-    return <p className="text-red-600">Error: {(error as Error).message}</p>;
+    return <p className="p-4 text-red-600">Error: {error.message}</p>;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto p-4">
@@ -123,6 +155,7 @@ export default function TodoList() {
         <Button
           className="bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
           onClick={handleAdd}
+          disabled={!newTodo.trim()}
         >
           Add
         </Button>
@@ -141,87 +174,124 @@ export default function TodoList() {
         ))}
       </div>
 
+      {/* Results count */}
+      <div className="text-sm text-gray-600">
+        Showing {currentItems.length} of {filteredTodos.length} todos
+        {search && ` (filtered by "${search}")`}
+      </div>
+
       {/* Todos List */}
-      <ul className="divide-y rounded-lg bg-gray-100 shadow">
-        {currentItems.map((todo) => (
-          <li
-            key={todo.id}
-            className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
-          >
-            {/* Left */}
-            <div className="flex items-start gap-3 w-full sm:w-auto break-words">
-              {todo.completed ? (
-                <CheckCircle className="text-green-500 shrink-0 mt-1" />
-              ) : (
-                <Circle className="text-gray-500 shrink-0 mt-1" />
-              )}
-              <Link
-                href={`/todos/${todo.id}`}
-                className={`text-base ${
-                  todo.completed ? "line-through opacity-60" : ""
-                }`}
-              >
-                {todo.title}
-              </Link>
-            </div>
+      {currentItems.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          {todos.length === 0
+            ? "No todos yet. Add one above!"
+            : "No todos match your filters."}
+        </div>
+      ) : (
+        <ul className="divide-y rounded-lg bg-gray-100 shadow">
+          {currentItems.map((todo) => (
+            <li
+              key={todo.id}
+              className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
+            >
+              {/* Left */}
+              <div className="flex items-start gap-3 w-full sm:w-auto break-words">
+                <button
+                  onClick={() => handleToggle(todo.id)}
+                  className="shrink-0 mt-1 hover:opacity-75"
+                >
+                  {todo.completed ? (
+                    <CheckCircle className="text-green-500" />
+                  ) : (
+                    <Circle className="text-gray-500" />
+                  )}
+                </button>
 
-            {/* Right */}
-            <div className="flex gap-2 self-end sm:self-auto">
-              <Button
-                variant="default"
-                onClick={() => {
-                  setEditingId(todo.id);
-                  setEditValue(todo.title);
-                }}
-              >
-                <Pencil className="w-4 h-4 text-green-500" />
-              </Button>
+                {editingId === todo.id ? (
+                  <Input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleEdit(todo.id, editValue);
+                      } else if (e.key === "Escape") {
+                        cancelEdit();
+                      }
+                    }}
+                    onBlur={() => handleEdit(todo.id, editValue)}
+                    className="flex-1"
+                    autoFocus
+                  />
+                ) : (
+                  <Link
+                    href={`/todos/${todo.id}`}
+                    className={`text-base hover:underline ${
+                      todo.completed ? "line-through opacity-60" : ""
+                    }`}
+                  >
+                    {todo.title}
+                  </Link>
+                )}
+              </div>
 
-              {editingId === todo.id && (
-                <Input
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={() => {
-                    updateTodos((t) =>
-                      t.id === todo.id ? { ...t, title: editValue } : t
-                    );
-                    setEditingId(null);
-                    setEditValue("");
-                  }}
-                  className="w-32"
-                />
-              )}
-
-              <Button variant="default" onClick={() => handleDelete(todo.id)}>
-                <TrashIcon className="w-4 h-4 text-red-500" />
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
+              {/* Right */}
+              <div className="flex gap-2 self-end sm:self-auto">
+                {editingId === todo.id ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleEdit(todo.id, editValue)}
+                    >
+                      Save
+                    </Button>
+                    <Button variant="outline" onClick={cancelEdit}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={() => startEdit(todo)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleDelete(todo.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Pagination */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4">
-        <Button
-          variant="outline"
-          className="w-full sm:w-auto"
-          disabled={page === 1}
-          onClick={() => setPage((p) => p - 1)}
-        >
-          Prev
-        </Button>
-        <span className="text-sm text-muted-foreground text-center">
-          Page {page} of {totalPages}
-        </span>
-        <Button
-          variant="outline"
-          className="w-full sm:w-auto"
-          disabled={page === totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next
-        </Button>
-      </div>
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            disabled={page === 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            Prev
+          </Button>
+          <span className="text-sm text-muted-foreground text-center">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            disabled={page === totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
