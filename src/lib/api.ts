@@ -1,11 +1,14 @@
-"use client";
+// lib/api.ts
 
 const ENDPOINT = "https://jsonplaceholder.typicode.com/todos";
 
-async function safeFetch(url: string, options?: RequestInit) {
-  const res = await fetch(url, options);
+/**
+ * Generic fetch helper with error handling and TypeScript support
+ */
+async function safeFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, { cache: "no-store", ...options });
   if (!res.ok) throw new Error(`Network error: ${res.status}`);
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 export interface Todo {
@@ -15,39 +18,42 @@ export interface Todo {
   completed: boolean;
 }
 
-/** Fetch all todos from server */
+/** Fetch all todos */
 export async function fetchTodos(): Promise<Todo[]> {
-  return safeFetch(ENDPOINT);
+  return safeFetch<Todo[]>(ENDPOINT);
 }
 
-/** Fetch single todo by ID from server */
+/** Fetch a single todo by ID */
 export async function fetchTodoById(id: number): Promise<Todo> {
-  return safeFetch(`${ENDPOINT}/${id}`);
+  return safeFetch<Todo>(`${ENDPOINT}/${id}`);
 }
 
-/** Create new todo on server */
+/** Create a new todo */
 export async function createTodo(data: Partial<Todo>): Promise<Todo> {
-  return safeFetch(ENDPOINT, {
+  return safeFetch<Todo>(ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
 }
 
-/** Update todo on server */
+/** Update an existing todo */
 export async function updateTodo(
   id: number,
   updates: Partial<Todo>
 ): Promise<Todo> {
-  return safeFetch(`${ENDPOINT}/${id}`, {
+  return safeFetch<Todo>(`${ENDPOINT}/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
 }
 
-/** Delete todo on server */
+/** Delete a todo */
 export async function deleteTodo(id: number): Promise<boolean> {
-  await fetch(`${ENDPOINT}/${id}`, { method: "DELETE" });
-  return true;
+  const res = await fetch(`${ENDPOINT}/${id}`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+  return res.ok;
 }
