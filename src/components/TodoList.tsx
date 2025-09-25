@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchTodos } from "@/lib/api";
 import { CheckCircle, Circle, Pencil, TrashIcon } from "lucide-react";
@@ -19,7 +19,6 @@ const PAGE_SIZE = 10;
 export default function TodoList() {
   const queryClient = useQueryClient();
 
-  // Fetch todos
   const {
     data: todos = [],
     isLoading,
@@ -39,41 +38,16 @@ export default function TodoList() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  // -------------------------------
-  // Filter and paginate todos
-  // -------------------------------
-  const filteredTodos = useMemo(() => {
-    return todos
-      .filter((t) => t.title.toLowerCase().includes(search.toLowerCase()))
-      .filter((t) => {
-        if (statusFilter === "completed") return t.completed;
-        if (statusFilter === "incomplete") return !t.completed;
-        return true;
-      });
-  }, [todos, search, statusFilter]);
-
-  const totalPages = Math.ceil(filteredTodos.length / PAGE_SIZE);
-
-  const currentItems = useMemo(
-    () => filteredTodos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filteredTodos, page]
-  );
-
-  // Reset to page 1 when filters change
-  useMemo(() => {
+  // Reset page when filters/search change
+  useEffect(() => {
     setPage(1);
   }, [search, statusFilter]);
 
-  // -------------------------------
-  // Helper: Update todos in query
-  // -------------------------------
+  // Helper to update todos in query cache
   const updateTodos = (callback: (todos: Todo[]) => Todo[]) => {
     queryClient.setQueryData<Todo[]>(["todos"], (old = []) => callback(old));
   };
 
-  // -------------------------------
-  // Add new todo
-  // -------------------------------
   const handleAdd = () => {
     if (!newTodo.trim()) return;
 
@@ -82,35 +56,22 @@ export default function TodoList() {
       title: newTodo.trim(),
       completed: false,
     };
-
     updateTodos((old) => [newItem, ...old]);
     setNewTodo("");
   };
 
-  // -------------------------------
-  // Toggle todo completion
-  // -------------------------------
-  const handleToggle = (id: number) => {
-    updateTodos((old) =>
-      old.map((t: Todo) =>
-        t.id === id ? { ...t, completed: !t.completed } : t
-      )
-    );
-  };
-
-  // -------------------------------
-  // Delete todo
-  // -------------------------------
   const handleDelete = (id: number) => {
     updateTodos((old) => old.filter((t) => t.id !== id));
   };
 
-  // -------------------------------
-  // Edit todo
-  // -------------------------------
+  const handleToggle = (id: number) => {
+    updateTodos((old) =>
+      old.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+    );
+  };
+
   const handleEdit = (id: number, newTitle: string) => {
     if (!newTitle.trim()) return;
-
     updateTodos((old) =>
       old.map((t) => (t.id === id ? { ...t, title: newTitle.trim() } : t))
     );
@@ -118,22 +79,30 @@ export default function TodoList() {
     setEditValue("");
   };
 
-  const startEdit = (todo: Todo) => {
-    setEditingId(todo.id);
-    setEditValue(todo.title);
-  };
+  const filteredTodos = useMemo(() => {
+    return todos.filter((todo: Todo) => {
+      const matchesSearch = todo.title
+        .toLowerCase()
+        .includes(search.toLowerCase());
+      const matchesStatus =
+        statusFilter === "completed"
+          ? todo.completed
+          : statusFilter === "incomplete"
+          ? !todo.completed
+          : true;
+      return matchesSearch && matchesStatus;
+    });
+  }, [todos, search, statusFilter]);
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditValue("");
-  };
+  const totalPages = Math.ceil(filteredTodos.length / PAGE_SIZE);
+  const currentItems = useMemo(
+    () => filteredTodos.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTodos, page]
+  );
 
-  // -------------------------------
-  // Render
-  // -------------------------------
-  if (isLoading && todos.length === 0) return <p className="p-4">Loading…</p>;
+  if (isLoading) return <p className="p-4">Loading…</p>;
   if (isError)
-    return <p className="p-4 text-red-600">Error: {error.message}</p>;
+    return <p className="p-4 text-red-600">Error: {error?.message}</p>;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto p-4">
@@ -153,9 +122,8 @@ export default function TodoList() {
           className="flex-1"
         />
         <Button
-          className="bg-green-500 text-white hover:bg-green-600 whitespace-nowrap"
+          className="bg-green-500 text-white hover:bg-green-600"
           onClick={handleAdd}
-          disabled={!newTodo.trim()}
         >
           Add
         </Button>
@@ -174,22 +142,12 @@ export default function TodoList() {
         ))}
       </div>
 
-      {/* Results count */}
-      <div className="text-sm text-gray-600">
-        Showing {currentItems.length} of {filteredTodos.length} todos
-        {search && ` (filtered by "${search}")`}
-      </div>
-
       {/* Todos List */}
       {currentItems.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          {todos.length === 0
-            ? "No todos yet. Add one above!"
-            : "No todos match your filters."}
-        </div>
+        <div className="text-center py-8 text-gray-500">No todos found.</div>
       ) : (
         <ul className="divide-y rounded-lg bg-gray-100 shadow">
-          {currentItems.map((todo) => (
+          {currentItems.map((todo: Todo) => (
             <li
               key={todo.id}
               className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
@@ -198,7 +156,7 @@ export default function TodoList() {
               <div className="flex items-start gap-3 w-full sm:w-auto break-words">
                 <button
                   onClick={() => handleToggle(todo.id)}
-                  className="shrink-0 mt-1 hover:opacity-75"
+                  className="shrink-0 mt-1"
                 >
                   {todo.completed ? (
                     <CheckCircle className="text-green-500" />
@@ -206,17 +164,13 @@ export default function TodoList() {
                     <Circle className="text-gray-500" />
                   )}
                 </button>
-
                 {editingId === todo.id ? (
                   <Input
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleEdit(todo.id, editValue);
-                      } else if (e.key === "Escape") {
-                        cancelEdit();
-                      }
+                      if (e.key === "Enter") handleEdit(todo.id, editValue);
+                      if (e.key === "Escape") setEditingId(null);
                     }}
                     onBlur={() => handleEdit(todo.id, editValue)}
                     className="flex-1"
@@ -225,9 +179,7 @@ export default function TodoList() {
                 ) : (
                   <Link
                     href={`/todos/${todo.id}`}
-                    className={`text-base hover:underline ${
-                      todo.completed ? "line-through opacity-60" : ""
-                    }`}
+                    className={todo.completed ? "line-through opacity-60" : ""}
                   >
                     {todo.title}
                   </Link>
@@ -244,21 +196,29 @@ export default function TodoList() {
                     >
                       Save
                     </Button>
-                    <Button variant="outline" onClick={cancelEdit}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditingId(null)}
+                    >
                       Cancel
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" onClick={() => startEdit(todo)}>
-                      <Pencil className="w-4 h-4" />
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingId(todo.id);
+                        setEditValue(todo.title);
+                      }}
+                    >
+                      <Pencil className="w-4 h-4 text-green-500" />
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => handleDelete(todo.id)}
-                      className="text-red-500 hover:text-red-700"
                     >
-                      <TrashIcon className="w-4 h-4" />
+                      <TrashIcon className="w-4 h-4 text-red-500" />
                     </Button>
                   </>
                 )}
@@ -273,7 +233,6 @@ export default function TodoList() {
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4">
           <Button
             variant="outline"
-            className="w-full sm:w-auto"
             disabled={page === 1}
             onClick={() => setPage((p) => p - 1)}
           >
@@ -284,7 +243,6 @@ export default function TodoList() {
           </span>
           <Button
             variant="outline"
-            className="w-full sm:w-auto"
             disabled={page === totalPages}
             onClick={() => setPage((p) => p + 1)}
           >
