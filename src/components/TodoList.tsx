@@ -2,17 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchTodos, loadTodos } from "@/lib/api";
+import { fetchTodos, loadTodosOffline, Todo } from "@/lib/api";
 import { CheckCircle, Circle, Pencil, TrashIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
-
-export interface Todo {
-  id: number;
-  title: string;
-  completed: boolean;
-}
 
 const PAGE_SIZE = 10;
 
@@ -27,8 +21,17 @@ export default function TodoList() {
   } = useQuery<Todo[], Error>({
     queryKey: ["todos"],
     queryFn: fetchTodos,
-    initialData: (): Todo[] => loadTodos(),
+    initialData: [],
   });
+
+  // Load offline todos once on mount if online fetch fails
+  useEffect(() => {
+    if (todos.length === 0) {
+      loadTodosOffline().then((offlineTodos) => {
+        queryClient.setQueryData<Todo[]>(["todos"], offlineTodos ?? []);
+      });
+    }
+  }, [queryClient, todos.length]);
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -39,40 +42,30 @@ export default function TodoList() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
 
-  // Reset page when filters/search change
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter]);
+  useEffect(() => setPage(1), [search, statusFilter]);
 
-  // Helper to update todos in query cache
   const updateTodos = (callback: (todos: Todo[]) => Todo[]) => {
-    queryClient.setQueryData<Todo[]>(["todos"], (old: Todo[] = []) =>
-      callback(old)
-    );
+    queryClient.setQueryData<Todo[]>(["todos"], (old = []) => callback(old));
   };
 
   const handleAdd = () => {
     if (!newTodo.trim()) return;
-
     const newItem: Todo = {
       id: Date.now(),
       title: newTodo.trim(),
       completed: false,
+      userId: 0,
     };
     updateTodos((old) => [newItem, ...old]);
     setNewTodo("");
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: number) =>
     updateTodos((old) => old.filter((t) => t.id !== id));
-  };
-
-  const handleToggle = (id: number) => {
+  const handleToggle = (id: number) =>
     updateTodos((old) =>
       old.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
     );
-  };
-
   const handleEdit = (id: number, newTitle: string) => {
     if (!newTitle.trim()) return;
     updateTodos((old) =>
@@ -83,7 +76,8 @@ export default function TodoList() {
   };
 
   const filteredTodos = useMemo(() => {
-    return todos.filter((todo: Todo) => {
+    const list = todos ?? [];
+    return list.filter((todo) => {
       const matchesSearch = todo.title
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -149,90 +143,84 @@ export default function TodoList() {
       {currentItems.length === 0 ? (
         <div className="text-center py-8 text-gray-500">No todos found.</div>
       ) : (
-        <div>
-          <ul className="divide-y rounded-lg bg-gray-100 shadow">
-            {currentItems.map((todo: Todo) => (
-              <li
-                key={todo.id}
-                className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
-              >
-                {/* Left */}
-                <div className="flex items-start gap-3 w-full sm:w-auto break-words">
-                  <button
-                    onClick={() => handleToggle(todo.id)}
-                    className="shrink-0 mt-1"
+        <ul className="divide-y rounded-lg bg-gray-100 shadow">
+          {currentItems.map((todo) => (
+            <li
+              key={todo.id}
+              className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
+            >
+              <div className="flex items-start gap-3 w-full sm:w-auto break-words">
+                <button
+                  onClick={() => handleToggle(todo.id)}
+                  className="shrink-0 mt-1"
+                >
+                  {todo.completed ? (
+                    <CheckCircle className="text-green-500" />
+                  ) : (
+                    <Circle className="text-gray-500" />
+                  )}
+                </button>
+                {editingId === todo.id ? (
+                  <Input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleEdit(todo.id, editValue);
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    onBlur={() => handleEdit(todo.id, editValue)}
+                    className="flex-1"
+                    autoFocus
+                  />
+                ) : (
+                  <Link
+                    href={`/todos/${todo.id}`}
+                    className={todo.completed ? "line-through opacity-60" : ""}
                   >
-                    {todo.completed ? (
-                      <CheckCircle className="text-green-500" />
-                    ) : (
-                      <Circle className="text-gray-500" />
-                    )}
-                  </button>
-                  {editingId === todo.id ? (
-                    <Input
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleEdit(todo.id, editValue);
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                      onBlur={() => handleEdit(todo.id, editValue)}
-                      className="flex-1"
-                      autoFocus
-                    />
-                  ) : (
-                    <Link
-                      href={`/todos/${todo.id}`}
-                      className={
-                        todo.completed ? "line-through opacity-60" : ""
-                      }
-                    >
-                      {todo.title}
-                    </Link>
-                  )}
-                </div>
+                    {todo.title}
+                  </Link>
+                )}
+              </div>
 
-                {/* Right */}
-                <div className="flex gap-2 self-end sm:self-auto">
-                  {editingId === todo.id ? (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleEdit(todo.id, editValue)}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setEditingId(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setEditingId(todo.id);
-                          setEditValue(todo.title);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4 text-green-500" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleDelete(todo.id)}
-                      >
-                        <TrashIcon className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+              <div className="flex gap-2 self-end sm:self-auto">
+                {editingId === todo.id ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleEdit(todo.id, editValue)}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingId(todo.id);
+                        setEditValue(todo.title);
+                      }}
+                    >
+                      <Pencil className="w-4 h-4 text-green-500" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleDelete(todo.id)}
+                    >
+                      <TrashIcon className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
 
       {/* Pagination */}

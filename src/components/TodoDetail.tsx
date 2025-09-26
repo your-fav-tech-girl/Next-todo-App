@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardHeader,
@@ -12,77 +12,59 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Circle, Undo2, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { fetchTodoById, updateTodo } from "@/lib/api";
+import { fetchTodoById, updateTodo, Todo } from "@/lib/api";
 
-interface Todo {
-  id: number;
-  userId: number;
-  title: string;
-  completed: boolean;
+interface TodoDetailProps {
+  id: string;
 }
 
 interface MutationContext {
   previous?: Todo;
 }
 
-export default function TodoDetail({ id: idProp }: { id: string }) {
+export default function TodoDetail({ id: idProp }: TodoDetailProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-
   const id = Number(idProp);
-  const isValidId = !isNaN(id);
 
-  // ✅ Always call hooks (no conditional hook calls)
+  // Always call hooks, even if id is invalid
   const {
     data: todo,
     isLoading,
     isError,
     error,
-  } = useQuery<Todo, Error>({
+  } = useQuery<Todo | undefined, Error>({
     queryKey: ["todo", id],
     queryFn: () => fetchTodoById(id),
-    enabled: isValidId, // skips execution if invalid
+    enabled: !isNaN(id), // skip fetching if invalid
     retry: false,
   });
 
   const toggleMutation = useMutation<Todo, Error, boolean, MutationContext>({
     mutationFn: (completed: boolean) => updateTodo(id, { completed }),
-    onMutate: async (completed: boolean): Promise<MutationContext> => {
+    onMutate: async (completed: boolean) => {
       await queryClient.cancelQueries({ queryKey: ["todo", id] });
       const previous = queryClient.getQueryData<Todo>(["todo", id]);
-      if (previous) {
+      if (previous)
         queryClient.setQueryData(["todo", id], { ...previous, completed });
-      }
       return { previous };
     },
-    onError: (error: Error, _variables: boolean, context?: MutationContext) => {
-      if (context?.previous) {
+    onError: (_err, _variables, context) => {
+      if (context?.previous)
         queryClient.setQueryData(["todo", id], context.previous);
-      }
     },
-
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["todo", id] });
       queryClient.invalidateQueries({ queryKey: ["todos"] });
     },
   });
 
-  // ✅ Conditional rendering is safe here (outside hooks)
-  if (!isValidId) {
-    return <div className="p-4 text-red-600">Invalid Todo ID</div>;
-  }
-
-  if (isLoading) {
-    return <div className="p-4">Loading…</div>;
-  }
-
-  if (isError) {
+  // Conditional rendering
+  if (isNaN(id)) return <div className="p-4 text-red-600">Invalid Todo ID</div>;
+  if (isLoading) return <div className="p-4">Loading…</div>;
+  if (isError)
     return <div className="p-4 text-red-600">Error: {error?.message}</div>;
-  }
-
-  if (!todo) {
-    return <div className="p-4">Todo not found.</div>;
-  }
+  if (!todo) return <div className="p-4 text-red-600">Todo not found.</div>;
 
   const isDone = todo.completed;
 
