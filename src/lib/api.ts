@@ -1,26 +1,25 @@
-export const TODOS_KEY = "my_todos";
 const ENDPOINT = "https://jsonplaceholder.typicode.com/todos";
+const TODOS_KEY = "todos";
 
-// ------------------------------
-// Local Storage Helpers
-// ------------------------------
-export function loadTodos(): Todo[] {
-  const data = localStorage.getItem(TODOS_KEY);
-  return data ? JSON.parse(data) : [];
-}
-
-export function saveTodos(todos: Todo[]): void {
-  localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
-}
-
-// ------------------------------
-// Todo Interface
-// ------------------------------
 export interface Todo {
   userId: number;
   id: number;
   title: string;
   completed: boolean;
+}
+
+//
+// Local Storage Helpers
+//
+export function loadTodos(): Todo[] {
+  if (typeof window === "undefined") return []; //SSR
+  const data = localStorage.getItem(TODOS_KEY);
+  return data ? JSON.parse(data) : [];
+}
+
+export function saveTodos(todos: Todo[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
 }
 
 // ------------------------------
@@ -29,7 +28,7 @@ export interface Todo {
 export async function fetchTodos(): Promise<Todo[]> {
   const res = await fetch(ENDPOINT);
   if (!res.ok) throw new Error("Network response was not ok");
-  const todos: Todo[] = await res.json();
+  const todos = (await res.json()) as Todo[];
   saveTodos(todos);
   return todos;
 }
@@ -40,9 +39,9 @@ export async function fetchTodos(): Promise<Todo[]> {
 export async function fetchTodoById(id: number): Promise<Todo> {
   const res = await fetch(`${ENDPOINT}/${id}`);
   if (!res.ok) throw new Error("Failed to fetch todo");
-  const todo: Todo = await res.json();
+  const todo = (await res.json()) as Todo;
 
-  // Update localStorage
+  // ✅ Sync localStorage
   const updatedTodos = [...loadTodos().filter((t) => t.id !== todo.id), todo];
   saveTodos(updatedTodos);
 
@@ -66,7 +65,7 @@ export async function createTodo(data: CreateTodoData): Promise<Todo> {
   });
   if (!res.ok) throw new Error("Failed to create todo");
 
-  const created: Todo = await res.json();
+  const created = (await res.json()) as Todo;
   saveTodos([created, ...loadTodos()]);
   return created;
 }
@@ -85,13 +84,13 @@ export async function updateTodo(
   updates: UpdateTodoData
 ): Promise<Todo> {
   const res = await fetch(`${ENDPOINT}/${id}`, {
-    method: "PUT",
+    method: "PATCH", // ✅ safer for partial updates
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
   if (!res.ok) throw new Error("Failed to update todo");
 
-  const updated: Todo = await res.json();
+  const updated = (await res.json()) as Todo;
   const next = loadTodos().map((t) => (t.id === id ? updated : t));
   saveTodos(next);
   return updated;

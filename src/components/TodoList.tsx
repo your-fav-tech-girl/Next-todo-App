@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchTodos } from "@/lib/api";
+import { fetchTodos, loadTodos } from "@/lib/api";
 import { CheckCircle, Circle, Pencil, TrashIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ export default function TodoList() {
   } = useQuery<Todo[], Error>({
     queryKey: ["todos"],
     queryFn: fetchTodos,
+    initialData: (): Todo[] => loadTodos(),
   });
 
   const [page, setPage] = useState(1);
@@ -45,7 +46,9 @@ export default function TodoList() {
 
   // Helper to update todos in query cache
   const updateTodos = (callback: (todos: Todo[]) => Todo[]) => {
-    queryClient.setQueryData<Todo[]>(["todos"], (old = []) => callback(old));
+    queryClient.setQueryData<Todo[]>(["todos"], (old: Todo[] = []) =>
+      callback(old)
+    );
   };
 
   const handleAdd = () => {
@@ -146,86 +149,90 @@ export default function TodoList() {
       {currentItems.length === 0 ? (
         <div className="text-center py-8 text-gray-500">No todos found.</div>
       ) : (
-        <ul className="divide-y rounded-lg bg-gray-100 shadow">
-          {currentItems.map((todo: Todo) => (
-            <li
-              key={todo.id}
-              className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
-            >
-              {/* Left */}
-              <div className="flex items-start gap-3 w-full sm:w-auto break-words">
-                <button
-                  onClick={() => handleToggle(todo.id)}
-                  className="shrink-0 mt-1"
-                >
-                  {todo.completed ? (
-                    <CheckCircle className="text-green-500" />
-                  ) : (
-                    <Circle className="text-gray-500" />
-                  )}
-                </button>
-                {editingId === todo.id ? (
-                  <Input
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleEdit(todo.id, editValue);
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                    onBlur={() => handleEdit(todo.id, editValue)}
-                    className="flex-1"
-                    autoFocus
-                  />
-                ) : (
-                  <Link
-                    href={`/todos/${todo.id}`}
-                    className={todo.completed ? "line-through opacity-60" : ""}
+        <div>
+          <ul className="divide-y rounded-lg bg-gray-100 shadow">
+            {currentItems.map((todo: Todo) => (
+              <li
+                key={todo.id}
+                className="p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"
+              >
+                {/* Left */}
+                <div className="flex items-start gap-3 w-full sm:w-auto break-words">
+                  <button
+                    onClick={() => handleToggle(todo.id)}
+                    className="shrink-0 mt-1"
                   >
-                    {todo.title}
-                  </Link>
-                )}
-              </div>
-
-              {/* Right */}
-              <div className="flex gap-2 self-end sm:self-auto">
-                {editingId === todo.id ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEdit(todo.id, editValue)}
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => setEditingId(null)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setEditingId(todo.id);
-                        setEditValue(todo.title);
+                    {todo.completed ? (
+                      <CheckCircle className="text-green-500" />
+                    ) : (
+                      <Circle className="text-gray-500" />
+                    )}
+                  </button>
+                  {editingId === todo.id ? (
+                    <Input
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleEdit(todo.id, editValue);
+                        if (e.key === "Escape") setEditingId(null);
                       }}
+                      onBlur={() => handleEdit(todo.id, editValue)}
+                      className="flex-1"
+                      autoFocus
+                    />
+                  ) : (
+                    <Link
+                      href={`/todos/${todo.id}`}
+                      className={
+                        todo.completed ? "line-through opacity-60" : ""
+                      }
                     >
-                      <Pencil className="w-4 h-4 text-green-500" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleDelete(todo.id)}
-                    >
-                      <TrashIcon className="w-4 h-4 text-red-500" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+                      {todo.title}
+                    </Link>
+                  )}
+                </div>
+
+                {/* Right */}
+                <div className="flex gap-2 self-end sm:self-auto">
+                  {editingId === todo.id ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleEdit(todo.id, editValue)}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(todo.id);
+                          setEditValue(todo.title);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4 text-green-500" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleDelete(todo.id)}
+                      >
+                        <TrashIcon className="w-4 h-4 text-red-500" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Pagination */}
