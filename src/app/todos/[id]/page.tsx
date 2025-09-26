@@ -1,12 +1,12 @@
 import TodoDetail from "@/components/TodoDetail";
-import PageProps from "next/app";
 
-interface TodoPageProps extends PageProps {
+interface Props {
   params: {
     id: string;
   };
 }
 
-export default function TodoDetailPage({ params }: TodoPageProps) {
+// Mark the page as async
+export default async function TodoDetailPage({ params }: Props) {
   return <TodoDetail id={params.id} />;
 }
