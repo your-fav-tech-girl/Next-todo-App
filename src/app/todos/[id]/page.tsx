@@ -1,12 +1,10 @@
 import TodoDetail from "@/components/TodoDetail";
 
-interface Props {
-  params: {
-    id: string;
-  };
-}
-
-// Mark the page as async
-export default async function TodoDetailPage({ params }: Props) {
-  return <TodoDetail id={params.id} />;
+export default async function TodoDetailPage({
+  params,
+}: {
+  params: { id: string } | Promise<{ id: string }>;
+}) {
+  const { id } = await params; // <-- await here
+  return <TodoDetail id={id} />;
 }

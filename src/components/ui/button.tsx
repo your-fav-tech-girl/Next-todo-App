@@ -1,3 +1,4 @@
+"use client";
 import React, { ForwardedRef } from "react";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
