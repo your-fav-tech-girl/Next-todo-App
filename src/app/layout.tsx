@@ -4,13 +4,16 @@ import "./globals.css";
 import { ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "../components/ui/button";
-import QueryProvider from "@/lib/QueryProvider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Create a single QueryClient instance
+const queryClient = new QueryClient();
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="p-4">
-        <QueryProvider>
+        <QueryClientProvider client={queryClient}>
           <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h1 className="text-2xl sm:text-4xl font-bold text-green-600">
               Todo App
@@ -28,7 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </header>
 
           <main>{children}</main>
-        </QueryProvider>
+        </QueryClientProvider>
       </body>
     </html>
   );
